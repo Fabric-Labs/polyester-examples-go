@@ -60,10 +60,10 @@ func main() {
 			bestBid := "-"
 			bestAsk := "-"
 			if len(book.Bids) > 0 {
-				bestBid = book.Bids[0].Price
+				bestBid = book.Bids[0].Price.Format()
 			}
 			if len(book.Asks) > 0 {
-				bestAsk = book.Asks[0].Price
+				bestAsk = book.Asks[0].Price.Format()
 			}
 			fmt.Printf("  seq=%s bid=%s ask=%s\n", book.BookSeq, bestBid, bestAsk)
 			seen++

@@ -78,8 +78,8 @@ func main() {
 		Side:          "buy",
 		OrderType:     "limit",
 		TIF:           &tif,
-		Qty:           qty,
-		Price:         &price,
+		Qty:           models.QtyFromDecimal(qty),
+		Price:         priceInputPtr(price),
 		PostOnly:      true,
 		ClientOrderID: &clientOrderID,
 	}, nil)
@@ -117,4 +117,9 @@ func main() {
 	} else {
 		fmt.Println("Order is no longer open")
 	}
+}
+
+func priceInputPtr(s string) *models.PriceInput {
+	p := models.PriceFromDecimal(s)
+	return &p
 }

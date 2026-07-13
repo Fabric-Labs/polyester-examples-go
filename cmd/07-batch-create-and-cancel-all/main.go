@@ -85,8 +85,8 @@ func main() {
 			Side:          "buy",
 			OrderType:     "limit",
 			TIF:           &tif,
-			Qty:           qty,
-			Price:         &price,
+			Qty:           models.QtyFromDecimal(qty),
+			Price:         priceInputPtr(price),
 			PostOnly:      true,
 			ClientOrderID: &id,
 		})
@@ -130,4 +130,9 @@ func main() {
 		"cancel_all: status=%s matched_orders=%d submitted_cancels=%d\n",
 		canceled.Status, canceled.MatchedOrders, canceled.SubmittedCancels,
 	)
+}
+
+func priceInputPtr(s string) *models.PriceInput {
+	p := models.PriceFromDecimal(s)
+	return &p
 }

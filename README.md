@@ -67,6 +67,25 @@ POLYESTER_EXAMPLES_MAX_QUOTE=10
 Use a devnet API key with a policy that allows trading. These examples are educational, not
 production trading systems.
 
+## Qty / price dual path
+
+Examples use **decimal strings** for human-readable order qty and price.
+
+For bots already in wire units, prefer scaled inputs:
+
+```go
+qty := models.MustQtyScaled(1_000_000).WithScale(8)
+price := models.PriceFromTicksInt(100_000_000)
+_, err = client.Orders.Create(ctx, models.CreateOrderRequest{
+    Symbol: &symbol, Side: "buy", OrderType: "limit", TIF: &tif,
+    Qty: models.QtyFromScaled(qty), Price: &price, PostOnly: true,
+}, nil)
+// Reads: order.Price.Ticks, order.OrigQty.Scaled
+```
+
+`PriceTicks.Ticks` are protocol units (1e6), not market tick-size alignment.
+Transfers/withdraws use `AssetAmountInput`, not order `QtyInput`.
+
 ## Funding vs Trading
 
 Deposits land in the Funding account. Spot orders spend Trading balance.
