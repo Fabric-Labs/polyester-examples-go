@@ -63,8 +63,11 @@ func main() {
 			price := "-"
 			if focus != nil {
 				label = focus.Symbol
+				if focus.LastPrice.Ticks > 0 {
+					price = focus.LastPrice.Format()
+				}
 			}
-			fmt.Printf("  update=%d rows=%d %s last_price_ticks=%s\n", seen+1, len(rows), label, price)
+			fmt.Printf("  update=%d rows=%d %s last_price=%s\n", seen+1, len(rows), label, price)
 			seen++
 		case <-timeout:
 			fmt.Println("No overview updates within 30s. The market may be quiet on devnet.")

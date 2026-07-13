@@ -130,8 +130,8 @@ func main() {
 		Side:          signal.Action,
 		OrderType:     "limit",
 		TIF:           &tif,
-		Qty:           qty,
-		Price:         &price,
+		Qty:           models.QtyFromDecimal(qty),
+		Price:         priceInputPtr(price),
 		ClientOrderID: &clientOrderID,
 	}, nil)
 	if err != nil {
@@ -199,4 +199,9 @@ func formatRSI(value *float64) string {
 	}
 	scaled := math.Round(*value*100) / 100
 	return polyesterexamples.FormatDecimal(scaled)
+}
+
+func priceInputPtr(s string) *models.PriceInput {
+	p := models.PriceFromDecimal(s)
+	return &p
 }
