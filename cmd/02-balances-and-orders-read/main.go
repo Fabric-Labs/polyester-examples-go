@@ -55,8 +55,8 @@ func main() {
 	fmt.Printf("\nOpen orders (%d)\n", len(openOrders.Orders))
 	for _, order := range openOrders.Orders {
 		fmt.Printf(
-			"  client_order_id=%s order_id=%s side=%s status=%s leaves_qty=%s\n",
-			order.ClientOrderID, order.OrderID, order.Side, order.Status, order.LeavesQty,
+			"  client_order_id=%s order_id=%s side=%s status=%s leaves_qty.scaled=%d\n",
+			order.ClientOrderID, order.OrderID, order.Side, order.Status, order.LeavesQty.Scaled,
 		)
 	}
 
@@ -67,8 +67,8 @@ func main() {
 	fmt.Printf("\nRecent order history for %s (%d)\n", symbol, len(history.Orders))
 	for _, order := range history.Orders {
 		fmt.Printf(
-			"  client_order_id=%s order_id=%s side=%s status=%s cum_qty=%s\n",
-			order.ClientOrderID, order.OrderID, order.Side, order.Status, order.CumQty,
+			"  client_order_id=%s order_id=%s side=%s status=%s cum_qty.scaled=%d\n",
+			order.ClientOrderID, order.OrderID, order.Side, order.Status, order.CumQty.Scaled,
 		)
 	}
 }

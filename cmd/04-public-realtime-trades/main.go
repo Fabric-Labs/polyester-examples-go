@@ -51,7 +51,7 @@ func main() {
 				return
 			}
 			fmt.Printf(
-				"  %s price_ticks=%s qty_scaled=%s match_id=%s\n",
+				"  %s price.ticks=%d qty.scaled=%d match_id=%s\n",
 				trade.Side, trade.Price.Ticks, trade.Qty.Scaled, trade.MatchID,
 			)
 			seen++
