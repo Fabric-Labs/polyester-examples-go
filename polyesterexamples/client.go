@@ -2,7 +2,6 @@ package polyesterexamples
 
 import (
 	"context"
-	"fmt"
 
 	polyester "github.com/Fabric-Labs/polyester-sdk-go"
 )
@@ -12,7 +11,7 @@ func NewClient(cfg ClientConfig) (*polyester.Client, error) {
 	clientCfg := polyester.Config{
 		APIKeyID:        cfg.APIKeyID,
 		APIPrivateKey:   cfg.APIPrivateKey,
-		HydrateCatalogs: false,
+		HydrateCatalogs: true,
 	}
 	if cfg.APIURL != "" {
 		clientCfg.APIURL = cfg.APIURL
@@ -31,16 +30,7 @@ func NewClient(cfg ClientConfig) (*polyester.Client, error) {
 	return polyester.New(clientCfg)
 }
 
-// WaitForCatalogs hydrates spot and zipper catalogs before examples use them.
+// WaitForCatalogs waits for the SDK's best-effort background catalog hydration.
 func WaitForCatalogs(ctx context.Context, client *polyester.Client) error {
-	spot, err := client.MarketData.GetSpotConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("get spot config: %w", err)
-	}
-	client.Catalogs.HydrateSpotConfig(spot.Raw)
-	zipper, err := client.Zipper.GetDepositWithdrawConfig(ctx)
-	if err == nil {
-		client.Catalogs.HydrateZipperConfig(zipper)
-	}
-	return nil
+	return client.WaitForCatalogs(ctx)
 }
