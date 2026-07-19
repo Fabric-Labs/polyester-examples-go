@@ -8,6 +8,16 @@
 *.so
 *.dylib
 
+# Locally built example binaries (no extension)
+/01-public-market-data
+/02-balances-and-orders-read
+/03-place-and-cancel-limit-order
+/04-public-realtime-trades
+/05-public-orderbook-stream
+/06-market-overview-stream
+/07-batch-create-and-cancel-all
+/10-rsi-signal-bot
+
 # Test binary, built with `go test -c`
 *.test
 
