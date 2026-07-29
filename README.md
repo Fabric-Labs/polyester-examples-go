@@ -22,6 +22,8 @@ This repository uses a local `replace` for `polyester-sdk-go` when working insid
 Fabric monorepo. Remove or adjust the `replace` directive in `go.mod` when consuming
 published SDK versions from another checkout.
 
+Requires `polyester-sdk-go` **v0.1.0a27+** (`BatchReplace` / `GetBatchReplaceStatus`).
+
 ## Configure
 
 ```bash
@@ -107,6 +109,7 @@ Run examples from the repository root after configuring `.env`.
 | `05-public-orderbook-stream` | Optional | No | Snapshot + stream order book |
 | `06-market-overview-stream` | Optional | No | Snapshot + stream market overview |
 | `07-batch-create-and-cancel-all` | Required | Yes (`POLYESTER_EXAMPLES_ENABLE_TRADING=1`) | Batch limit create, `cancel_all` cleanup |
+| `08-batch-replace` | Required | Yes (`POLYESTER_EXAMPLES_ENABLE_TRADING=1`) | Batch create, `BatchReplace` + status, cleanup |
 | `10-rsi-signal-bot` | Required | Optional (`POLYESTER_EXAMPLES_ENABLE_TRADING=1`) | Candles + RSI signal; optional small limit order |
 
 Suggested order: `01` → `04`/`05`/`06` → `02` → `10` (dry) → `03` → `07` / `10` (live) when ready.
@@ -165,11 +168,15 @@ cancel by `order_id` when reads lag.
 
 ```bash
 POLYESTER_EXAMPLES_ENABLE_TRADING=1 go run ./cmd/07-batch-create-and-cancel-all
+POLYESTER_EXAMPLES_ENABLE_TRADING=1 go run ./cmd/08-batch-replace
 ```
 
 Places two small post-only buy limits via `batch_create`, optionally checks open orders, then
 flattens with `cancel_all`. Each order uses half of `POLYESTER_EXAMPLES_MAX_QUOTE` so total
 notional stays within the safety cap.
+
+`08-batch-replace` creates two post-only buys, submits `Orders.BatchReplace` for a same-symbol quote refresh, prints the admission receipt, polls `Orders.GetBatchReplaceStatus`, then cleans up owned orders by prefix.
+
 
 ```bash
 go run ./cmd/10-rsi-signal-bot

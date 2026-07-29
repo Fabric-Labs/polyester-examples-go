@@ -47,7 +47,7 @@ func main() {
 	}
 	fmt.Println("\nRecent trades")
 	for _, trade := range trades.Trades {
-		fmt.Printf("  %s price.ticks=%d qty.scaled=%d\n", trade.Side, trade.Price.Ticks, trade.Qty.Scaled)
+		fmt.Printf("  %s price.ticks=%d qty.scaled=%d\n", trade.Side, trade.Price.Ticks(), trade.Qty.Scaled())
 	}
 
 	candles, err := client.MarketData.GetCandles(ctx, &symbol, nil, settings.Timeframe, 5, nil, nil, false)

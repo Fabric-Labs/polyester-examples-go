@@ -64,13 +64,18 @@ func main() {
 		log.Fatal(err)
 	}
 
-	clientOrderID := polyesterexamples.UniqueClientOrderID("example-limit")
+	const cleanupPrefix = "example-limit"
+	clientOrderID := polyesterexamples.UniqueClientOrderID(cleanupPrefix)
 	fmt.Printf(
 		"Creating post-only buy limit order: symbol=%s price=%s qty=%s client_order_id=%s\n",
 		symbol, price, qty, clientOrderID,
 	)
 
-	defer polyesterexamples.CancelAllForSymbol(ctx, client, symbol)
+	defer func() {
+		if err := polyesterexamples.CancelOwnedOrdersWithPrefix(ctx, client, cleanupPrefix); err != nil {
+			fmt.Printf("Cleanup warning: %v\n", err)
+		}
+	}()
 
 	tif := "gtc"
 	created, err := client.Orders.Create(ctx, models.CreateOrderRequest{
@@ -94,14 +99,14 @@ func main() {
 	if err != nil {
 		fmt.Println(
 			"Order create was accepted, but open-order reads did not catch up in time. " +
-				"This is a known devnet OMS read-indexing issue — canceling by order_id anyway.",
+			"This is a known devnet OMS read-indexing issue — canceling by client_order_id anyway.",
 		)
 		fmt.Printf("  detail: %v\n", err)
 	} else {
 		fmt.Printf("Visible in open orders: status=%s\n", openOrder.Status)
 	}
 
-	canceled, err := client.Orders.Cancel(ctx, nil, &created.OrderID, &clientOrderID, &symbol, nil, nil)
+	canceled, err := client.Orders.Cancel(ctx, nil, models.OrderKeyByClientID(clientOrderID), &symbol, nil, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
