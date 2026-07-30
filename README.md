@@ -22,7 +22,7 @@ This repository uses a local `replace` for `polyester-sdk-go` when working insid
 Fabric monorepo. Remove or adjust the `replace` directive in `go.mod` when consuming
 published SDK versions from another checkout.
 
-Requires `polyester-sdk-go` **v0.1.0a27+** (`BatchReplace` / `GetBatchReplaceStatus`).
+Requires `polyester-sdk-go` **v0.1.0a28+** (`BatchReplace` / `GetBatchReplaceStatus`).
 
 ## Configure
 
