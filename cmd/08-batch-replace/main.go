@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"time"
 
 	"github.com/Fabric-Labs/polyester-examples-go/polyesterexamples"
 	"github.com/Fabric-Labs/polyester-sdk-go/models"
@@ -69,24 +70,33 @@ func main() {
 	}
 
 	const cleanupPrefix = "example-brepl"
-	clientOrderIDs := []string{
+	predecessorClientOrderIDs := []string{
 		polyesterexamples.UniqueClientOrderID(cleanupPrefix),
 		polyesterexamples.UniqueClientOrderID(cleanupPrefix),
 	}
+	successorClientOrderIDs := []string{
+		polyesterexamples.UniqueClientOrderID(cleanupPrefix),
+		polyesterexamples.UniqueClientOrderID(cleanupPrefix),
+	}
+	cleanupClientOrderIDs := append([]string(nil), predecessorClientOrderIDs...)
 	fmt.Printf(
 		"Batch create 2 post-only buys, then batch_replace new_price=%s (was %s)\n",
 		newPrice, price,
 	)
 
 	defer func() {
-		if err := polyesterexamples.CancelOwnedOrdersWithPrefix(ctx, client, cleanupPrefix); err != nil {
-			fmt.Printf("Cleanup warning: %v\n", err)
+		for _, clientOrderID := range cleanupClientOrderIDs {
+			_, err := client.Orders.Cancel(ctx, nil, models.OrderKeyByClientID(clientOrderID), &symbol, nil, nil)
+			if err != nil {
+				fmt.Printf("Cleanup warning for %s: %v\n", clientOrderID, err)
+			}
 		}
+		fmt.Println("Targeted cleanup completed for tracked batch-replace orders")
 	}()
 
 	tif := "gtc"
-	items := make([]models.CreateOrderRequest, 0, len(clientOrderIDs))
-	for _, clientOrderID := range clientOrderIDs {
+	items := make([]models.CreateOrderRequest, 0, len(predecessorClientOrderIDs))
+	for _, clientOrderID := range predecessorClientOrderIDs {
 		id := clientOrderID
 		items = append(items, models.CreateOrderRequest{
 			Symbol:        &symbol,
@@ -110,45 +120,70 @@ func main() {
 	}
 
 	replacePrice := models.PriceFromDecimal(newPrice)
-	replaceItems := make([]models.BatchReplaceItem, 0, len(clientOrderIDs))
-	for _, clientOrderID := range clientOrderIDs {
+	replaceItems := make([]models.BatchReplaceItem, 0, len(predecessorClientOrderIDs))
+	for index, clientOrderID := range predecessorClientOrderIDs {
 		p := replacePrice
+		successorClientOrderID := successorClientOrderIDs[index]
 		replaceItems = append(replaceItems, models.BatchReplaceItem{
-			Key:      models.OrderKeyByClientID(clientOrderID),
-			NewPrice: &p,
+			Key:              models.OrderKeyByClientID(clientOrderID),
+			NewPrice:         &p,
+			NewClientOrderID: &successorClientOrderID,
 		})
 	}
-	replaced, err := client.Orders.BatchReplace(ctx, nil, replaceItems, symbol, nil, nil)
+	requestID := polyesterexamples.UniqueClientOrderID("example-brepl-request")
+	replaced, err := client.Orders.BatchReplace(ctx, nil, replaceItems, symbol, nil, &requestID)
 	if err != nil {
 		log.Fatal(err)
 	}
+	// If this request had timed out ambiguously, retry the exact same logical batch
+	// with requestID. Do not generate a new request ID for an idempotent retry.
+	// replaced, err = client.Orders.BatchReplace(ctx, nil, replaceItems, symbol, nil, &requestID)
 	fmt.Printf(
-		"Batch replace admission: batch_request_id=%s status=%s accepted=%d rejected=%d\n",
-		replaced.BatchRequestID, replaced.Status, replaced.AcceptedCount, replaced.RejectedCount,
+		"Batch replace admission: request_id=%s batch_request_id=%s status=%s accepted=%d rejected=%d\n",
+		requestID, replaced.BatchRequestID, replaced.Status, replaced.AcceptedCount, replaced.RejectedCount,
 	)
 	for _, item := range replaced.Results {
+		if item.ItemIndex >= 0 && int(item.ItemIndex) < len(cleanupClientOrderIDs) && item.ReplacementOrderID != "" {
+			cleanupClientOrderIDs[item.ItemIndex] = successorClientOrderIDs[item.ItemIndex]
+		}
 		code := item.Code
 		if code == "" {
 			code = "-"
 		}
 		fmt.Printf(
-			"  item=%d status=%s old=%s replacement=%s client_order_id=%s code=%s\n",
+			"  item=%d status=%s predecessor_order_id=%s replacement_order_id=%s successor_client_order_id=%s code=%s\n",
 			item.ItemIndex, item.Status, item.OldOrderID, item.ReplacementOrderID, item.ClientOrderID, code,
 		)
 	}
-	status, err := client.Orders.GetBatchReplaceStatus(ctx, nil, replaced.BatchRequestID, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf(
-		"Batch replace status: admission=%s items=%d accepted=%d rejected=%d\n",
-		status.AdmissionStatus, len(status.Items), status.AcceptedCount, status.RejectedCount,
-	)
+	fmt.Printf("Predecessor client IDs are stale after admission: %v\n", predecessorClientOrderIDs)
+	fmt.Printf("Cleanup and later tracking use successor client IDs: %v\n", successorClientOrderIDs)
 
-	if err := polyesterexamples.CancelOwnedOrdersWithPrefix(ctx, client, cleanupPrefix); err != nil {
-		log.Fatal(err)
+	deadline := time.Now().Add(time.Duration(settings.OrderTimeoutSec * float64(time.Second)))
+	for {
+		status, err := client.Orders.GetBatchReplaceStatus(ctx, nil, replaced.BatchRequestID, nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf(
+			"Batch replace status: admission=%s items=%d accepted=%d rejected=%d settled=%t\n",
+			status.AdmissionStatus, len(status.Items), status.AcceptedCount, status.RejectedCount,
+			models.IsBatchReplaceSettled(status),
+		)
+		for _, item := range status.Items {
+			fmt.Printf(
+				"  item=%d phase=%s predecessor_order_id=%s replacement_order_id=%s order_status=%s\n",
+				item.ItemIndex, item.Phase, item.OldOrderID, item.ReplacementOrderID, item.OrderStatus,
+			)
+		}
+		if models.IsBatchReplaceSettled(status) {
+			break
+		}
+		if time.Now().After(deadline) {
+			log.Fatalf("Batch replace did not settle within %.1fs", settings.OrderTimeoutSec)
+		}
+		time.Sleep(time.Duration(settings.PollSec * float64(time.Second)))
 	}
-	fmt.Println("Targeted cleanup completed for owned batch-replace orders")
+
 }
 
 func priceInputPtr(s string) *models.PriceInput {
