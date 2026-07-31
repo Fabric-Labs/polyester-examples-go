@@ -20,12 +20,23 @@ var terminalOrderStatuses = map[string]struct{}{
 	"canceled": {}, "rejected": {}, "filled": {},
 }
 
-// UniqueClientOrderID returns a unique client order id for examples.
+// UniqueClientOrderID returns a unique client order id for examples (≤36 chars).
 func UniqueClientOrderID(prefix string) string {
 	if prefix == "" {
 		prefix = "example"
 	}
-	return fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano())
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	maxPrefix := 36 - 1 - len(suffix)
+	if maxPrefix < 1 {
+		if len(suffix) > 36 {
+			return suffix[len(suffix)-36:]
+		}
+		return suffix
+	}
+	if len(prefix) > maxPrefix {
+		prefix = prefix[:maxPrefix]
+	}
+	return fmt.Sprintf("%s-%s", prefix, suffix)
 }
 
 // WaitForOpenOrder polls until an order is visible as open or terminal.
@@ -126,7 +137,7 @@ func WaitForNoOpenOrder(
 
 // GetOrderOrNone fetches an order by client order id, returning false when not found.
 func GetOrderOrNone(ctx context.Context, client *polyester.Client, clientOrderID string) (models.Order, bool, error) {
-	detail, err := client.Orders.Get(ctx, nil, nil, &clientOrderID, nil, false, false)
+	detail, err := client.Orders.Get(ctx, nil, models.OrderKeyByClientID(clientOrderID), nil, false, false)
 	if err != nil {
 		if isNotFound(err) {
 			return models.Order{}, false, nil
@@ -178,7 +189,6 @@ func CancelAfterTimeout(
 	ctx context.Context,
 	client *polyester.Client,
 	clientOrderID, symbol string,
-	orderID *string,
 	timeoutSec, pollSec float64,
 ) (string, error) {
 	if pollSec <= 0 {
@@ -206,7 +216,7 @@ func CancelAfterTimeout(
 		}
 	}
 
-	_, err := client.Orders.Cancel(ctx, nil, orderID, &clientOrderID, &symbol, nil, nil)
+	_, err := client.Orders.Cancel(ctx, nil, models.OrderKeyByClientID(clientOrderID), &symbol, nil, nil)
 	if err != nil {
 		return "", err
 	}
@@ -217,12 +227,28 @@ func CancelAfterTimeout(
 	return "canceled_after_timeout", nil
 }
 
-// CancelAllForSymbol attempts to flatten open orders for a symbol.
-func CancelAllForSymbol(ctx context.Context, client *polyester.Client, symbol string) {
-	_, err := client.Orders.CancelAll(ctx, nil, nil, &symbol, nil, false, nil)
-	if err != nil {
-		fmt.Printf("Cleanup warning: cancel_all failed: %v\n", err)
+// CancelOwnedOrdersWithPrefix cancels only open orders owned by the named bot
+// prefix. A concurrent fill/cancel that makes an order not_found is successful
+// cleanup; other cancellation failures are returned.
+func CancelOwnedOrdersWithPrefix(ctx context.Context, client *polyester.Client, prefix string) error {
+	if strings.TrimSpace(prefix) == "" {
+		return errors.New("cleanup prefix must not be empty")
 	}
+	matches, err := OpenOrdersWithPrefix(ctx, client, prefix, 100)
+	if err != nil {
+		return err
+	}
+	var cleanupErrs []error
+	for _, order := range matches {
+		clientOrderID := order.ClientOrderID
+		symbolID := order.SymbolID
+		_, err := client.Orders.Cancel(ctx, nil, models.OrderKeyByClientID(clientOrderID), nil, &symbolID, nil)
+		if err == nil || isNotFound(err) {
+			continue
+		}
+		cleanupErrs = append(cleanupErrs, fmt.Errorf("cancel owned order %q: %w", clientOrderID, err))
+	}
+	return errors.Join(cleanupErrs...)
 }
 
 func isNotFound(err error) bool {

@@ -35,10 +35,10 @@ func main() {
 		fmt.Printf(
 			"  asset_id=%d trading=%s available=%s reserved=%s funding=%s\n",
 			balance.AssetID,
-			codecs.FormatLedgerU128(balance.Trading, codecs.LedgerScale),
-			codecs.FormatLedgerU128(balance.Available, codecs.LedgerScale),
-			codecs.FormatLedgerU128(balance.Reserved, codecs.LedgerScale),
-			codecs.FormatLedgerU128(balance.Funding, codecs.LedgerScale),
+			formatLedger(balance.Trading),
+			formatLedger(balance.Available),
+			formatLedger(balance.Reserved),
+			formatLedger(balance.Funding),
 		)
 	}
 
@@ -56,7 +56,7 @@ func main() {
 	for _, order := range openOrders.Orders {
 		fmt.Printf(
 			"  client_order_id=%s order_id=%s side=%s status=%s leaves_qty.scaled=%d\n",
-			order.ClientOrderID, order.OrderID, order.Side, order.Status, order.LeavesQty.Scaled,
+			order.ClientOrderID, order.OrderID, order.Side, order.Status, order.LeavesQty.Scaled(),
 		)
 	}
 
@@ -68,9 +68,17 @@ func main() {
 	for _, order := range history.Orders {
 		fmt.Printf(
 			"  client_order_id=%s order_id=%s side=%s status=%s cum_qty.scaled=%d\n",
-			order.ClientOrderID, order.OrderID, order.Side, order.Status, order.CumQty.Scaled,
+			order.ClientOrderID, order.OrderID, order.Side, order.Status, order.CumQty.Scaled(),
 		)
 	}
+}
+
+func formatLedger(raw string) string {
+	formatted, err := codecs.FormatLedgerU128(raw, codecs.LedgerScale)
+	if err != nil {
+		return raw
+	}
+	return formatted
 }
 
 func intPtr(value int) *int {
