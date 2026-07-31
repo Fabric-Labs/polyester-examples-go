@@ -63,7 +63,7 @@ func main() {
 			price := "-"
 			if focus != nil {
 				label = focus.Symbol
-				if focus.LastPrice.Ticks > 0 {
+				if focus.LastPrice.Ticks() > 0 {
 					price = focus.LastPrice.Format()
 				}
 			}

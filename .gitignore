@@ -40,3 +40,13 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+/08-batch-replace
+/09-batch-cancel
+/11-twap-trigger
+/12-ladder-trigger
+/13-private-realtime
+/14-internal-transfer
+/15-api-key-trading-withdraw
+/16-funding-to-trading
+/17-funding-to-external
+/18-trailing-stop-trigger

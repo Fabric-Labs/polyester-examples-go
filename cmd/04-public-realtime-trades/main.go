@@ -52,7 +52,7 @@ func main() {
 			}
 			fmt.Printf(
 				"  %s price.ticks=%d qty.scaled=%d match_id=%s\n",
-				trade.Side, trade.Price.Ticks, trade.Qty.Scaled, trade.MatchID,
+				trade.Side, trade.Price.Ticks(), trade.Qty.Scaled(), trade.MatchID,
 			)
 			seen++
 		case <-timeout:
