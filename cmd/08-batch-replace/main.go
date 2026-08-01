@@ -48,12 +48,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	newPrice, err := polyesterexamples.SlightlyLowerLimitPrice(price, pair)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	quoteAssetID := polyesterexamples.QuoteAssetID(client, pair, symbol)
 	if quoteAssetID == nil {
 		log.Fatalf("Could not resolve quote asset id for %s", symbol)
 	}
-
 	balances, err := client.Balances.List(ctx, nil, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -65,14 +68,14 @@ func main() {
 		log.Fatal(err)
 	}
 
-	const cleanupPrefix = "example-batch"
+	const cleanupPrefix = "example-bmod"
 	clientOrderIDs := []string{
 		polyesterexamples.UniqueClientOrderID(cleanupPrefix),
 		polyesterexamples.UniqueClientOrderID(cleanupPrefix),
 	}
 	fmt.Printf(
-		"Batch creating 2 post-only buy limits: symbol=%s price=%s qty=%s each (max ~%s quote per order)\n",
-		symbol, price, qty, polyesterexamples.FormatDecimal(perOrderCap),
+		"Batch create 2 post-only buys, then batch_replace new_price=%s (was %s)\n",
+		newPrice, price,
 	)
 
 	defer func() {
@@ -102,36 +105,52 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("Batch create: accepted=%d rejected=%d\n", created.AcceptedCount, created.RejectedCount)
-	for _, item := range created.Results {
+	if created.AcceptedCount == 0 {
+		log.Fatal("No batch orders were accepted")
+	}
+
+	replacePrice := models.PriceFromDecimal(newPrice)
+	replaceItems := make([]models.BatchReplaceItem, 0, len(clientOrderIDs))
+	for _, clientOrderID := range clientOrderIDs {
+		p := replacePrice
+		replaceItems = append(replaceItems, models.BatchReplaceItem{
+			Key:      models.OrderKeyByClientID(clientOrderID),
+			NewPrice: &p,
+		})
+	}
+	replaced, err := client.Orders.BatchReplace(ctx, nil, replaceItems, symbol, nil, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf(
+		"Batch replace admission: batch_request_id=%s status=%s accepted=%d rejected=%d\n",
+		replaced.BatchRequestID, replaced.Status, replaced.AcceptedCount, replaced.RejectedCount,
+	)
+	for _, item := range replaced.Results {
 		code := item.Code
 		if code == "" {
 			code = "-"
 		}
 		fmt.Printf(
-			"  client_order_id=%s status=%s order_id=%s code=%s\n",
-			item.ClientOrderID, item.Status, item.OrderID, code,
+			"  item=%d status=%s old=%s replacement=%s client_order_id=%s code=%s\n",
+			item.ItemIndex, item.Status, item.OldOrderID, item.ReplacementOrderID, item.ClientOrderID, code,
 		)
 	}
-	if created.AcceptedCount == 0 {
-		log.Fatal("No batch orders were accepted")
-	}
-
-	for _, clientOrderID := range clientOrderIDs {
-		openOrder, err := polyesterexamples.WaitForOpenOrder(
-			ctx, client, clientOrderID, 50, settings.OrderTimeoutSec, settings.PollSec,
+	status, err := client.Orders.GetBatchReplaceStatus(ctx, nil, replaced.BatchRequestID, nil)
+	if err != nil {
+		// Admission already succeeded; status projection can lag on devnet.
+		fmt.Printf("Batch replace status lookup lagged (%v); continuing cleanup\n", err)
+	} else {
+		fmt.Printf(
+			"Batch replace status: admission=%s items=%d accepted=%d rejected=%d\n",
+			status.AdmissionStatus, len(status.Items), status.AcceptedCount, status.RejectedCount,
 		)
-		if err != nil {
-			fmt.Printf("  %s: create accepted but open-order reads lagged (%v)\n", clientOrderID, err)
-			continue
-		}
-		fmt.Printf("Visible in open orders: %s status=%s\n", clientOrderID, openOrder.Status)
 	}
 
-	// Prefix-targeted per-order cancel (not Orders.BatchCancel — see cmd/09).
 	if err := polyesterexamples.CancelOwnedOrdersWithPrefix(ctx, client, cleanupPrefix); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("Targeted per-order cleanup completed for owned batch orders")
+	fmt.Println("Targeted cleanup completed for owned batch-replace orders")
 }
 
 func priceInputPtr(s string) *models.PriceInput {

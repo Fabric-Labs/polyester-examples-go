@@ -16,6 +16,7 @@ const (
 	SubAccountIDEnv  = "POLYESTER_SUB_ACCOUNT_ID"
 	APIURLEnv        = "POLYESTER_API_URL"
 	WSURLEnv         = "POLYESTER_WS_URL"
+	OwnerPrivateKeyEnv = "POLYESTER_OWNER_PRIVATE_KEY"
 
 	ExamplesSymbolEnv         = "POLYESTER_EXAMPLES_SYMBOL"
 	ExamplesTimeframeEnv      = "POLYESTER_EXAMPLES_TIMEFRAME"
@@ -29,6 +30,17 @@ const (
 	ExamplesPollEnv           = "POLYESTER_EXAMPLES_POLL_SEC"
 	ExamplesStreamCountEnv    = "POLYESTER_EXAMPLES_STREAM_COUNT"
 	ExamplesOrderbookDepthEnv = "POLYESTER_EXAMPLES_ORDERBOOK_DEPTH"
+
+	ExamplesEnableTransfersEnv            = "POLYESTER_EXAMPLES_ENABLE_TRANSFERS"
+	ExamplesEnableWithdrawalsEnv          = "POLYESTER_EXAMPLES_ENABLE_WITHDRAWALS"
+	ExamplesEnableChainFundingToTradingEnv = "POLYESTER_EXAMPLES_ENABLE_CHAIN_FUNDING_TO_TRADING"
+	ExamplesEnableChainExternalSubmitEnv  = "POLYESTER_EXAMPLES_ENABLE_CHAIN_EXTERNAL_SUBMIT"
+	ExamplesTransferDestAccountIDEnv      = "POLYESTER_EXAMPLES_TRANSFER_DEST_ACCOUNT_ID"
+	ExamplesTransferAmountEnv             = "POLYESTER_EXAMPLES_TRANSFER_AMOUNT"
+	ExamplesWithdrawAmountEnv             = "POLYESTER_EXAMPLES_WITHDRAW_AMOUNT"
+	ExamplesChainAmountEnv                = "POLYESTER_EXAMPLES_CHAIN_AMOUNT"
+	ExamplesExternalDestinationEnv        = "POLYESTER_EXAMPLES_EXTERNAL_DESTINATION"
+	ExamplesExternalChainIDEnv            = "POLYESTER_EXAMPLES_EXTERNAL_CHAIN_ID"
 )
 
 // Settings holds example runtime knobs loaded from the environment.
@@ -45,6 +57,18 @@ type Settings struct {
 	PollSec         float64
 	StreamCount     int
 	OrderbookDepth  int
+
+	EnableTransfers              bool
+	EnableWithdrawals            bool
+	EnableChainFundingToTrading  bool
+	EnableChainExternalSubmit    bool
+	TransferDestAccountID        string
+	TransferAmount               float64
+	WithdrawAmount               float64
+	ChainAmount                  float64
+	ExternalDestination          string
+	ExternalChainID              int
+	OwnerPrivateKey              string
 }
 
 // ClientConfig is explicit Polyester client configuration for examples.
@@ -92,18 +116,29 @@ func LoadSettings() Settings {
 		timeframe = "1m"
 	}
 	return Settings{
-		Symbol:          symbol,
-		Timeframe:       timeframe,
-		CandleLimit:     EnvInt(ExamplesCandleLimitEnv, 100),
-		EnableTrading:   EnvBool(ExamplesEnableTradingEnv),
-		MaxQuote:        EnvFloat(ExamplesMaxQuoteEnv, 10),
-		RSIPeriod:       EnvInt(ExamplesRSIPeriodEnv, 14),
-		RSIOversold:     EnvFloat(ExamplesRSIOversoldEnv, 30),
-		RSIOverbought:   EnvFloat(ExamplesRSIOverboughtEnv, 70),
-		OrderTimeoutSec: EnvFloat(ExamplesOrderTimeoutEnv, 15),
-		PollSec:         EnvFloat(ExamplesPollEnv, 0.5),
-		StreamCount:     EnvInt(ExamplesStreamCountEnv, 5),
-		OrderbookDepth:  EnvInt(ExamplesOrderbookDepthEnv, 50),
+		Symbol:                       symbol,
+		Timeframe:                    timeframe,
+		CandleLimit:                  EnvInt(ExamplesCandleLimitEnv, 100),
+		EnableTrading:                EnvBool(ExamplesEnableTradingEnv),
+		MaxQuote:                     EnvFloat(ExamplesMaxQuoteEnv, 10),
+		RSIPeriod:                    EnvInt(ExamplesRSIPeriodEnv, 14),
+		RSIOversold:                  EnvFloat(ExamplesRSIOversoldEnv, 30),
+		RSIOverbought:                EnvFloat(ExamplesRSIOverboughtEnv, 70),
+		OrderTimeoutSec:              EnvFloat(ExamplesOrderTimeoutEnv, 15),
+		PollSec:                      EnvFloat(ExamplesPollEnv, 0.5),
+		StreamCount:                  EnvInt(ExamplesStreamCountEnv, 5),
+		OrderbookDepth:               EnvInt(ExamplesOrderbookDepthEnv, 50),
+		EnableTransfers:              EnvBool(ExamplesEnableTransfersEnv),
+		EnableWithdrawals:            EnvBool(ExamplesEnableWithdrawalsEnv),
+		EnableChainFundingToTrading:  EnvBool(ExamplesEnableChainFundingToTradingEnv),
+		EnableChainExternalSubmit:    EnvBool(ExamplesEnableChainExternalSubmitEnv),
+		TransferDestAccountID:        strings.TrimSpace(os.Getenv(ExamplesTransferDestAccountIDEnv)),
+		TransferAmount:               EnvFloat(ExamplesTransferAmountEnv, 0.01),
+		WithdrawAmount:               EnvFloat(ExamplesWithdrawAmountEnv, 0.01),
+		ChainAmount:                  EnvFloat(ExamplesChainAmountEnv, 1),
+		ExternalDestination:          strings.TrimSpace(os.Getenv(ExamplesExternalDestinationEnv)),
+		ExternalChainID:              EnvInt(ExamplesExternalChainIDEnv, 6),
+		OwnerPrivateKey:              strings.TrimSpace(os.Getenv(OwnerPrivateKeyEnv)),
 	}
 }
 
@@ -166,6 +201,52 @@ func RequireTradingEnabled(settings Settings) error {
 			"live order writes are disabled; set %s=1 after confirming your API key policy and trading balance",
 			ExamplesEnableTradingEnv,
 		)
+	}
+	return nil
+}
+
+// RequireTransfersEnabled ensures internal transfers were explicitly opted in.
+func RequireTransfersEnabled(settings Settings) error {
+	if !settings.EnableTransfers {
+		return fmt.Errorf(
+			"internal transfers are disabled; set %s=1 and %s after confirming destination and balances",
+			ExamplesEnableTransfersEnv,
+			ExamplesTransferDestAccountIDEnv,
+		)
+	}
+	if settings.TransferDestAccountID == "" || looksLikePlaceholderCredential(settings.TransferDestAccountID) {
+		return fmt.Errorf("%s is required when transfers are enabled", ExamplesTransferDestAccountIDEnv)
+	}
+	return nil
+}
+
+// RequireWithdrawalsEnabled ensures API-key withdraw submit was explicitly opted in.
+func RequireWithdrawalsEnabled(settings Settings) error {
+	if !settings.EnableWithdrawals {
+		return fmt.Errorf(
+			"withdraw submit is disabled; set %s=1 after confirming trading balance and intent",
+			ExamplesEnableWithdrawalsEnv,
+		)
+	}
+	return nil
+}
+
+// RequireChainFundingToTradingEnabled ensures Funding→Trading UserOp submit was opted in.
+func RequireChainFundingToTradingEnabled(settings Settings) error {
+	if !settings.EnableChainFundingToTrading {
+		return fmt.Errorf(
+			"chain Funding→Trading submit is disabled; set %s=1 (and %s) to broadcast",
+			ExamplesEnableChainFundingToTradingEnv,
+			OwnerPrivateKeyEnv,
+		)
+	}
+	return nil
+}
+
+// RequireOwnerPrivateKey ensures the smart-account owner key is present.
+func RequireOwnerPrivateKey(settings Settings) error {
+	if settings.OwnerPrivateKey == "" || looksLikePlaceholderCredential(settings.OwnerPrivateKey) {
+		return fmt.Errorf("%s is required for smart-account UserOp submission", OwnerPrivateKeyEnv)
 	}
 	return nil
 }
