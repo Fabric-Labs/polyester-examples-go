@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"sort"
 	"strconv"
 
 	"github.com/Fabric-Labs/polyester-examples-go/polyesterexamples"
@@ -50,6 +51,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	sort.SliceStable(candles.Candles, func(i, j int) bool {
+		return candles.Candles[i].TsSec < candles.Candles[j].TsSec
+	})
 	closes := make([]float64, 0, len(candles.Candles))
 	for _, candle := range candles.Candles {
 		if candle.Close == "" {
@@ -122,7 +126,11 @@ func main() {
 		signal.Action, price, qty, clientOrderID,
 	)
 
-	defer polyesterexamples.CancelAllForSymbol(ctx, client, symbol)
+	defer func() {
+		if err := polyesterexamples.CancelOwnedOrdersWithPrefix(ctx, client, botPrefix); err != nil {
+			fmt.Printf("Cleanup warning: %v\n", err)
+		}
+	}()
 
 	tif := "gtc"
 	created, err := client.Orders.Create(ctx, models.CreateOrderRequest{
@@ -144,7 +152,6 @@ func main() {
 		client,
 		clientOrderID,
 		symbol,
-		&created.OrderID,
 		settings.OrderTimeoutSec,
 		settings.PollSec,
 	)

@@ -53,7 +53,6 @@ func main() {
 	if quoteAssetID == nil {
 		log.Fatalf("Could not resolve quote asset id for %s", symbol)
 	}
-
 	balances, err := client.Balances.List(ctx, nil, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -65,14 +64,13 @@ func main() {
 		log.Fatal(err)
 	}
 
-	const cleanupPrefix = "example-batch"
+	const cleanupPrefix = "example-bcancel"
 	clientOrderIDs := []string{
 		polyesterexamples.UniqueClientOrderID(cleanupPrefix),
 		polyesterexamples.UniqueClientOrderID(cleanupPrefix),
 	}
 	fmt.Printf(
-		"Batch creating 2 post-only buy limits: symbol=%s price=%s qty=%s each (max ~%s quote per order)\n",
-		symbol, price, qty, polyesterexamples.FormatDecimal(perOrderCap),
+		"Batch create 2 post-only buys, then Orders.BatchCancel by client_order_id\n",
 	)
 
 	defer func() {
@@ -102,7 +100,22 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("Batch create: accepted=%d rejected=%d\n", created.AcceptedCount, created.RejectedCount)
-	for _, item := range created.Results {
+	if created.AcceptedCount == 0 {
+		log.Fatal("No batch orders were accepted")
+	}
+
+	cancelItems := make([]models.BatchCancelItem, 0, len(clientOrderIDs))
+	for _, clientOrderID := range clientOrderIDs {
+		cancelItems = append(cancelItems, models.BatchCancelItem{
+			Key: models.OrderKeyByClientID(clientOrderID),
+		})
+	}
+	canceled, err := client.Orders.BatchCancel(ctx, nil, cancelItems, nil, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Batch cancel: accepted=%d rejected=%d\n", canceled.AcceptedCount, canceled.RejectedCount)
+	for _, item := range canceled.Results {
 		code := item.Code
 		if code == "" {
 			code = "-"
@@ -112,26 +125,11 @@ func main() {
 			item.ClientOrderID, item.Status, item.OrderID, code,
 		)
 	}
-	if created.AcceptedCount == 0 {
-		log.Fatal("No batch orders were accepted")
-	}
 
-	for _, clientOrderID := range clientOrderIDs {
-		openOrder, err := polyesterexamples.WaitForOpenOrder(
-			ctx, client, clientOrderID, 50, settings.OrderTimeoutSec, settings.PollSec,
-		)
-		if err != nil {
-			fmt.Printf("  %s: create accepted but open-order reads lagged (%v)\n", clientOrderID, err)
-			continue
-		}
-		fmt.Printf("Visible in open orders: %s status=%s\n", clientOrderID, openOrder.Status)
-	}
-
-	// Prefix-targeted per-order cancel (not Orders.BatchCancel — see cmd/09).
 	if err := polyesterexamples.CancelOwnedOrdersWithPrefix(ctx, client, cleanupPrefix); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("Targeted per-order cleanup completed for owned batch orders")
+	fmt.Println("BatchCancel demo complete; residual owned orders cleaned up")
 }
 
 func priceInputPtr(s string) *models.PriceInput {

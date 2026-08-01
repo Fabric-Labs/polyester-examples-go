@@ -11,6 +11,14 @@ func TestLoadSettingsReadsExampleEnv(t *testing.T) {
 	t.Setenv("POLYESTER_EXAMPLES_SYMBOL", "BTC-USDT")
 	t.Setenv("POLYESTER_EXAMPLES_ENABLE_TRADING", "true")
 	t.Setenv("POLYESTER_EXAMPLES_MAX_QUOTE", "25.5")
+	t.Setenv("POLYESTER_EXAMPLES_ENABLE_TRANSFERS", "1")
+	t.Setenv("POLYESTER_EXAMPLES_TRANSFER_DEST_ACCOUNT_ID", "destAccount")
+	t.Setenv("POLYESTER_EXAMPLES_TRANSFER_AMOUNT", "0.02")
+	t.Setenv("POLYESTER_EXAMPLES_WITHDRAW_AMOUNT", "0.03")
+	t.Setenv("POLYESTER_EXAMPLES_CHAIN_AMOUNT", "2")
+	t.Setenv("POLYESTER_EXAMPLES_EXTERNAL_CHAIN_ID", "6")
+	t.Setenv("POLYESTER_EXAMPLES_EXTERNAL_DESTINATION", "0xabc")
+	t.Setenv("POLYESTER_OWNER_PRIVATE_KEY", "0xdead")
 
 	settings := polyesterexamples.LoadSettings()
 
@@ -22,6 +30,35 @@ func TestLoadSettingsReadsExampleEnv(t *testing.T) {
 	}
 	if settings.MaxQuote != 25.5 {
 		t.Fatalf("max_quote=%v want 25.5", settings.MaxQuote)
+	}
+	if !settings.EnableTransfers {
+		t.Fatal("expected enable_transfers=true")
+	}
+	if settings.TransferDestAccountID != "destAccount" {
+		t.Fatalf("transfer dest=%q", settings.TransferDestAccountID)
+	}
+	if settings.TransferAmount != 0.02 || settings.WithdrawAmount != 0.03 || settings.ChainAmount != 2 {
+		t.Fatalf("amounts transfer=%v withdraw=%v chain=%v", settings.TransferAmount, settings.WithdrawAmount, settings.ChainAmount)
+	}
+	if settings.ExternalDestination != "0xabc" || settings.ExternalChainID != 6 {
+		t.Fatalf("external dest=%q chain=%d", settings.ExternalDestination, settings.ExternalChainID)
+	}
+	if settings.OwnerPrivateKey != "0xdead" {
+		t.Fatalf("owner key=%q", settings.OwnerPrivateKey)
+	}
+}
+
+func TestRequireTransfersEnabledNeedsDest(t *testing.T) {
+	err := polyesterexamples.RequireTransfersEnabled(polyesterexamples.Settings{EnableTransfers: true})
+	if err == nil {
+		t.Fatal("expected missing dest account error")
+	}
+	err = polyesterexamples.RequireTransfersEnabled(polyesterexamples.Settings{
+		EnableTransfers:       true,
+		TransferDestAccountID: "RLxqJGUDg92",
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"math/big"
 	"strconv"
 	"strings"
 
@@ -173,7 +174,10 @@ func AvailableTradingBalance(balances models.BalancesList, assetID uint32) float
 		if raw == "" {
 			raw = row.Trading
 		}
-		formatted := codecs.FormatLedgerU128(raw, codecs.LedgerScale)
+		formatted, err := codecs.FormatLedgerU128(raw, codecs.LedgerScale)
+		if err != nil {
+			return 0
+		}
 		value, err := strconv.ParseFloat(formatted, 64)
 		if err != nil {
 			return 0
@@ -181,6 +185,47 @@ func AvailableTradingBalance(balances models.BalancesList, assetID uint32) float
 		return value
 	}
 	return 0
+}
+
+// SlightlyLowerLimitPrice returns price minus one tick (for batch_modify demos).
+func SlightlyLowerLimitPrice(price string, pair map[string]any) (string, error) {
+	value, err := strconv.ParseFloat(price, 64)
+	if err != nil {
+		return "", fmt.Errorf("parse price %q: %w", price, err)
+	}
+	step := TickSize(pair)
+	if step <= 0 {
+		step = 0.01
+	}
+	lower := value - step
+	if lower < step {
+		lower = step
+	}
+	return FormatDecimal(roundToTick(alignToStep(lower, step, false), step)), nil
+}
+
+// PickUSDTZipperAsset selects USDT (ledger_id=1) from deposit/withdraw config.
+func PickUSDTZipperAsset(cfg models.DepositWithdrawConfig) (models.ZipperAssetConfig, bool) {
+	for _, asset := range cfg.Assets {
+		if asset.LedgerID == 1 || strings.EqualFold(asset.Asset, "USDT") {
+			return asset, true
+		}
+	}
+	return models.ZipperAssetConfig{}, false
+}
+
+// HumanAmountToE18 converts a human decimal amount to ledger e18 units.
+func HumanAmountToE18(amount float64) *big.Int {
+	if amount <= 0 {
+		return big.NewInt(0)
+	}
+	rat := new(big.Rat).SetFloat64(amount)
+	if rat == nil {
+		return big.NewInt(0)
+	}
+	scale := new(big.Rat).SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil))
+	scaled := new(big.Rat).Mul(rat, scale)
+	return new(big.Int).Quo(scaled.Num(), scaled.Denom())
 }
 
 // FarBelowMarketPrice returns a post-only buy price slightly below the reference price.
@@ -206,10 +251,10 @@ func ResolvePostOnlyBuyLimitPrice(ctx context.Context, client *polyester.Client,
 		overview, err := client.MarketOverview.List(ctx, []string{symbol}, 5, "", false)
 		if err == nil {
 			for _, row := range overview.Markets {
-				if row.Symbol != symbol || row.LastPrice.Ticks <= 0 {
+				if row.Symbol != symbol || row.LastPrice.Ticks() <= 0 {
 					continue
 				}
-				if price, ok := postOnlyBuyPriceFromLastTicks(row.LastPrice.Ticks, tickSize); ok {
+				if price, ok := postOnlyBuyPriceFromLastTicks(row.LastPrice.Ticks(), tickSize); ok {
 					return price, nil
 				}
 			}
@@ -226,13 +271,13 @@ func postOnlyBuyPriceFromBook(book models.OrderbookData, tickSize string) (strin
 	if err != nil || tickTicks == 0 {
 		return "", false
 	}
-	bidTicks := book.Bids[0].Price.Ticks
+	bidTicks := book.Bids[0].Price.Ticks()
 	target := bidTicks - int64(tickTicks)
 	if target < int64(tickTicks) {
 		target = int64(tickTicks)
 	}
-	if len(book.Asks) > 0 && book.Asks[0].Price.Ticks > 0 {
-		askTicks := book.Asks[0].Price.Ticks
+	if len(book.Asks) > 0 && book.Asks[0].Price.Ticks() > 0 {
+		askTicks := book.Asks[0].Price.Ticks()
 		maxPostOnly := askTicks - int64(tickTicks)
 		if target > maxPostOnly {
 			target = maxPostOnly
@@ -303,7 +348,7 @@ func BuyQtyForQuoteCap(availableQuote, maxQuote, price float64, pair map[string]
 	step := StepSize(pair)
 	rawQty := quoteToUse / price
 	qty := alignToStep(rawQty, step, false)
-	minQty := minBaseQtyForNotional(pair, price)
+	minQty := MinBaseQtyForNotional(pair, price)
 	if qty < minQty {
 		qty = minQty
 	}
@@ -329,7 +374,9 @@ func SellQtyForQuoteCap(availableBase, maxQuote, price float64, pair map[string]
 	return FormatQty(qty, pair), nil
 }
 
-func minBaseQtyForNotional(pair map[string]any, price float64) float64 {
+// MinBaseQtyForNotional returns the smallest base qty that satisfies min qty and
+// min notional at the given price (aligned up to the pair step).
+func MinBaseQtyForNotional(pair map[string]any, price float64) float64 {
 	step := StepSize(pair)
 	minQty := MinQtyBase(pair)
 	minimum := MinNotionalQuote(pair)

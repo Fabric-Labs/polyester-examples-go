@@ -3,24 +3,29 @@
 Runnable examples for the official Polyester Go SDK.
 
 These examples are intentionally small. Start with read-only market data, then move to
-authenticated reads, then opt in to live devnet order writes when your API key and trading
-balance are ready.
+authenticated reads, then opt in to live devnet order writes, transfers, withdrawals,
+or chain Funding UserOps when your credentials and balances are ready.
 
 ## Requirements
 
 - Go 1.25+
 - A Polyester API key for authenticated examples
 - Trading balance for order-writing examples
+- Funding balance + owner private key for chain Funding→Trading / Funding→external submit
 
 ## Install
 
 ```bash
+GOPRIVATE='github.com/Fabric-Labs/*' \
+GONOSUMDB='github.com/Fabric-Labs/*' \
 go mod download
 ```
 
-This repository uses a local `replace` for `polyester-sdk-go` when working inside the
-Fabric monorepo. Remove or adjust the `replace` directive in `go.mod` when consuming
-published SDK versions from another checkout.
+This repo may `replace` the SDK with a sibling `../polyester-sdk-go` checkout when local
+APIs (for example `OrderKey` / `chain`) are ahead of the published tag. A standalone clone
+without the sibling still resolves the published module version in `go.mod`.
+
+The SDK repository is private; your GitHub account and Git credentials must have access.
 
 ## Configure
 
@@ -37,9 +42,15 @@ Fill in:
 If you already have `polyester-sdk-go/.env` configured for devnet, you can reuse the same
 three values here. Placeholder text from `.env.example` is ignored for public examples but
 will fail authenticated or trading examples until replaced with real credentials.
+Username is optional; API-key authentication with the Account ID is valid.
 
 Public market-data examples can run without credentials. Authenticated reads and all order
 examples require an API key.
+
+For a subaccount-scoped key, attach an **API-key policy** that grants ledger
+read permission for balance reads and private balance streams. Add trading
+permission for order mutations. The API-key policy is distinct from the
+subaccount policy, and both apply.
 
 The SDK does not implicitly read a `.env` file. These examples load `.env`, then pass
 credentials explicitly to the client constructor.
@@ -52,20 +63,25 @@ set -a && source .env && set +a
 
 ## Safety Model
 
-Live order writes are disabled by default. Any example that places orders requires:
+Opt-in flags are **separate**. Never overload `POLYESTER_EXAMPLES_ENABLE_TRADING` onto
+transfers, withdrawals, or chain submit:
 
-```bash
-POLYESTER_EXAMPLES_ENABLE_TRADING=1
-```
+| Flag | Gates |
+| --- | --- |
+| `POLYESTER_EXAMPLES_ENABLE_TRADING=1` | Order / trigger writes (`03`, `07`–`12`, `18`, live `10`) |
+| `POLYESTER_EXAMPLES_ENABLE_TRANSFERS=1` | Internal transfer submit (`14`) + dest account env |
+| `POLYESTER_EXAMPLES_ENABLE_WITHDRAWALS=1` | API-key withdraw **submit** (`15`; prepare always runs) |
+| `POLYESTER_EXAMPLES_ENABLE_CHAIN_FUNDING_TO_TRADING=1` | Funding→Trading UserOp **submit** (`16`; encode always) |
+| `POLYESTER_EXAMPLES_ENABLE_CHAIN_EXTERNAL_SUBMIT=1` | Funding→external UserOp **submit** (`17`; encode always) |
 
-The default max quote notional is:
+The default max quote notional for order examples is:
 
 ```bash
 POLYESTER_EXAMPLES_MAX_QUOTE=10
 ```
 
-Use a devnet API key with a policy that allows trading. These examples are educational, not
-production trading systems.
+Use a devnet API key with a policy that allows the actions you enable. These examples are
+educational, not production trading systems.
 
 ## Qty / price dual path
 
@@ -74,71 +90,87 @@ Examples use **decimal strings** for human-readable order qty and price.
 For bots already in wire units, prefer scaled inputs:
 
 ```go
-qty := models.MustQtyScaled(1_000_000).WithScale(8)
+scale, ok := client.Catalogs.BaseQuantityScaleForSymbol(symbol)
+if !ok {
+    log.Fatal("base quantity scale is unavailable; wait for hydrated catalogs")
+}
+qty := models.MustQtyScaled(1_000_000).WithScale(scale).WithSymbol(symbol)
 price := models.PriceFromTicksInt(100_000_000)
 _, err = client.Orders.Create(ctx, models.CreateOrderRequest{
     Symbol: &symbol, Side: "buy", OrderType: "limit", TIF: &tif,
     Qty: models.QtyFromScaled(qty), Price: &price, PostOnly: true,
 }, nil)
-// Reads: order.Price.Ticks, order.OrigQty.Scaled
+// Reads: order.Price.Ticks(), order.OrigQty.Scaled()
 ```
 
-`PriceTicks.Ticks` are protocol units (1e6), not market tick-size alignment.
+`PriceTicks.Ticks()` returns protocol units (1e6), not market tick-size alignment.
 Transfers/withdraws use `AssetAmountInput`, not order `QtyInput`.
+Private order-stream `QtyScaled.Scale()` metadata may be `nil`. Treat `.Scaled()`
+as raw wire units and resolve the base quantity scale from hydrated catalogs by
+symbol or `symbol_id`; never invent a fallback scale.
 
 ## Funding vs Trading
 
-Deposits land in the Funding account. Spot orders spend Trading balance.
+Deposits land in the **Funding** account. Spot orders spend **Trading** balance.
 
-Before running live order examples, move funds from Funding to Unified Trading in the Polyester UI
-or through the wallet/on-chain flow. The current SDK examples do not automate Funding to Trading
-movement because that path is wallet-driven, not a simple API-key RPC.
+Before running live order examples, move funds from Funding to Unified Trading:
+
+- In the Polyester UI / wallet flow, or
+- Via example `16-funding-to-trading` (encodes `TradingGateway.deposit`; set
+  `POLYESTER_EXAMPLES_ENABLE_CHAIN_FUNDING_TO_TRADING=1` plus
+  `POLYESTER_OWNER_PRIVATE_KEY` to broadcast a UserOp)
+
+API-key Trading→Funding withdraw is example `15` (prepare always; submit only when
+`POLYESTER_EXAMPLES_ENABLE_WITHDRAWALS=1`).
 
 ## Examples
 
 Run examples from the repository root after configuring `.env`.
 
-| Command | Credentials | Live orders | What it teaches |
+| Command | Credentials | Opt-in | What it teaches |
 | --- | --- | --- | --- |
-| `01-public-market-data` | Optional | No | REST overview, trades, candles |
-| `02-balances-and-orders-read` | Required | No | Balances, open orders, history |
-| `03-place-and-cancel-limit-order` | Required | Yes (`POLYESTER_EXAMPLES_ENABLE_TRADING=1`) | Post-only limit create, cancel, cleanup |
-| `04-public-realtime-trades` | Optional | No | Public trade websocket |
-| `05-public-orderbook-stream` | Optional | No | Snapshot + stream order book |
-| `06-market-overview-stream` | Optional | No | Snapshot + stream market overview |
-| `07-batch-create-and-cancel-all` | Required | Yes (`POLYESTER_EXAMPLES_ENABLE_TRADING=1`) | Batch limit create, `cancel_all` cleanup |
-| `10-rsi-signal-bot` | Required | Optional (`POLYESTER_EXAMPLES_ENABLE_TRADING=1`) | Candles + RSI signal; optional small limit order |
+| `01-public-market-data` | Optional | — | REST overview, trades, candles |
+| `02-balances-and-orders-read` | Required | — | Balances, open orders, history |
+| `19-preview-order` | Required | — | PreviewOrder admissibility + protected price bound |
+| `20-lifecycle-flows` | Required | — | Lifecycle reasons + Zipper rejection details |
+| `03-place-and-cancel-limit-order` | Required | `ENABLE_TRADING` | Post-only limit create, cancel, cleanup |
+| `04-public-realtime-trades` | Optional | — | Public trade websocket |
+| `05-public-orderbook-stream` | Optional | — | Snapshot + stream order book |
+| `06-market-overview-stream` | Optional | — | Snapshot + stream market overview |
+| `07-batch-create-and-cancel-all` | Required | `ENABLE_TRADING` | Batch create + prefix-targeted per-order cancel |
+| `08-batch-replace` | Required | `ENABLE_TRADING` | Batch create, `batch_replace` price, cleanup |
+| `09-batch-cancel` | Required | `ENABLE_TRADING` | Batch create, `Orders.BatchCancel` by client id |
+| `10-rsi-signal-bot` | Required for live | Optional `ENABLE_TRADING` | Candles + RSI; optional small limit |
+| `11-twap-trigger` | Required | `ENABLE_TRADING` | Triggers API TWAP create → list/get → cancel |
+| `12-ladder-trigger` | Required | `ENABLE_TRADING` | Triggers API ladder create → list/get → cancel |
+| `13-private-realtime` | Required | — | Private orders + balances websocket |
+| `14-internal-transfer` | Required | `ENABLE_TRANSFERS` + dest account | Tiny `InternalTransfers.Create` |
+| `15-api-key-trading-withdraw` | Required | Prepare always; `ENABLE_WITHDRAWALS` to submit | Trading→Funding prepare / submit |
+| `16-funding-to-trading` | Required | Encode always; `ENABLE_CHAIN_FUNDING_TO_TRADING` to submit | Encode deposit; optional UserOp |
+| `17-funding-to-external` | Required | Encode needs dest; `ENABLE_CHAIN_EXTERNAL_SUBMIT` to submit | Encode withdrawToChain; optional UserOp |
+| `18-trailing-stop-trigger` | Required | `ENABLE_TRADING` | Standalone trailing-stop (SELL market-IOC) create → list/get → cancel |
 
-Suggested order: `01` → `04`/`05`/`06` → `02` → `10` (dry) → `03` → `07` / `10` (live) when ready.
+Suggested order: `01` → `04`/`05`/`06` → `02` → `13` → `10` (dry) → `03` → `07`/`08`/`09` →
+`11`/`12`/`18` → money-movement examples when those flags are intentionally enabled.
 
-TWAP, ladder, and standalone trigger examples are intentionally omitted for v1. They use the
-triggers API (separate lifecycle from normal orders) and are a poor fit for a small cookbook.
+### Live smoke
+
+```bash
+make live-smoke
+# or: bash scripts/live-smoke.sh
+```
+
+Runs all examples in order. Gated examples print `SKIP` and continue when their flag is
+missing. Set `LIVE_SMOKE_STRICT=1` to fail instead of skipping.
 
 ### Read-Only
 
 ```bash
 go run ./cmd/01-public-market-data
-```
-
-Lists markets, recent trades, and candles using public Polyester market data.
-
-```bash
+go run ./cmd/04-public-realtime-trades
+go run ./cmd/05-public-orderbook-stream
 go run ./cmd/06-market-overview-stream
 ```
-
-Subscribes to merged market-overview rows (REST snapshot plus live websocket updates).
-
-```bash
-go run ./cmd/04-public-realtime-trades
-```
-
-Subscribes to public trade updates.
-
-```bash
-go run ./cmd/05-public-orderbook-stream
-```
-
-Creates a snapshot-plus-stream order book subscription and prints top-of-book updates.
 
 Realtime examples exit after 30 seconds if no data arrives (common on quiet devnet markets).
 
@@ -146,44 +178,59 @@ Realtime examples exit after 30 seconds if no data arrives (common on quiet devn
 
 ```bash
 go run ./cmd/02-balances-and-orders-read
+go run ./cmd/19-preview-order
+go run ./cmd/20-lifecycle-flows
+go run ./cmd/13-private-realtime
 ```
 
-Prints ledger balances, open orders, and recent order history.
+`13` subscribes to private orders and balances concurrently and prints up to
+`POLYESTER_EXAMPLES_STREAM_COUNT` events per stream (or 30s timeout). No trading flag.
 
 ### Explicit Live Writes
 
 ```bash
 POLYESTER_EXAMPLES_ENABLE_TRADING=1 go run ./cmd/03-place-and-cancel-limit-order
-```
-
-Places a small post-only buy limit order, waits for it to appear in open orders (when devnet
-read indexing is healthy), cancels it, and attempts cleanup with `cancel_all`.
-
-On devnet, `orders.create` may return `accepted` while `list_open` / `orders.get` stay empty for
-a while. That is a known backend read-indexing issue, not an SDK bug. The example still submits
-cancel by `order_id` when reads lag.
-
-```bash
 POLYESTER_EXAMPLES_ENABLE_TRADING=1 go run ./cmd/07-batch-create-and-cancel-all
+POLYESTER_EXAMPLES_ENABLE_TRADING=1 go run ./cmd/08-batch-replace
+POLYESTER_EXAMPLES_ENABLE_TRADING=1 go run ./cmd/09-batch-cancel
+POLYESTER_EXAMPLES_ENABLE_TRADING=1 go run ./cmd/11-twap-trigger
+POLYESTER_EXAMPLES_ENABLE_TRADING=1 go run ./cmd/12-ladder-trigger
+POLYESTER_EXAMPLES_ENABLE_TRADING=1 go run ./cmd/18-trailing-stop-trigger
 ```
 
-Places two small post-only buy limits via `batch_create`, optionally checks open orders, then
-flattens with `cancel_all`. Each order uses half of `POLYESTER_EXAMPLES_MAX_QUOTE` so total
-notional stays within the safety cap.
+`07` cleans up with prefix-targeted per-order cancel. `09` demonstrates `Orders.BatchCancel`.
+TWAP/ladder/trailing-stop use the Triggers API (separate lifecycle from normal orders):
+create → list/get → cancel, plus best-effort `cancel_all` for resting child orders.
+Standalone trailing stops are SELL market-IOC; list/get project `trigger_type`, `side`, and
+`parent_order_id` (empty for standalone).
 
 ```bash
 go run ./cmd/10-rsi-signal-bot
-```
-
-Fetches Polyester candles, computes RSI in plain Go, and prints the signal. By default this is
-read-only.
-
-```bash
 POLYESTER_EXAMPLES_ENABLE_TRADING=1 go run ./cmd/10-rsi-signal-bot
 ```
 
-When RSI crosses a threshold, places a small live limit order, monitors briefly, and cancels it if
-it remains open. Uses `cancel_all` in a `defer` for cleanup.
+### Transfers / withdrawals / chain
+
+```bash
+POLYESTER_EXAMPLES_ENABLE_TRANSFERS=1 \
+POLYESTER_EXAMPLES_TRANSFER_DEST_ACCOUNT_ID=... \
+go run ./cmd/14-internal-transfer
+
+go run ./cmd/15-api-key-trading-withdraw
+POLYESTER_EXAMPLES_ENABLE_WITHDRAWALS=1 go run ./cmd/15-api-key-trading-withdraw
+
+go run ./cmd/16-funding-to-trading
+POLYESTER_EXAMPLES_ENABLE_CHAIN_FUNDING_TO_TRADING=1 \
+POLYESTER_OWNER_PRIVATE_KEY=0x... \
+go run ./cmd/16-funding-to-trading
+
+POLYESTER_EXAMPLES_EXTERNAL_DESTINATION=0x... \
+go run ./cmd/17-funding-to-external
+POLYESTER_EXAMPLES_ENABLE_CHAIN_EXTERNAL_SUBMIT=1 \
+POLYESTER_OWNER_PRIVATE_KEY=0x... \
+POLYESTER_EXAMPLES_EXTERNAL_DESTINATION=0x... \
+go run ./cmd/17-funding-to-external
+```
 
 ## Useful Settings
 
@@ -197,10 +244,18 @@ it remains open. Uses `cancel_all` in a `defer` for cleanup.
 - `POLYESTER_EXAMPLES_ORDER_TIMEOUT_SEC`: default `15`
 - `POLYESTER_EXAMPLES_STREAM_COUNT`: default `5`
 - `POLYESTER_EXAMPLES_ORDERBOOK_DEPTH`: default `50`
+- `POLYESTER_EXAMPLES_TRANSFER_AMOUNT`: default `0.01`
+- `POLYESTER_EXAMPLES_WITHDRAW_AMOUNT`: default `0.01`
+- `POLYESTER_EXAMPLES_CHAIN_AMOUNT`: default `1`
+- `POLYESTER_EXAMPLES_EXTERNAL_DESTINATION`: required to encode example `17`
+- `POLYESTER_EXAMPLES_EXTERNAL_CHAIN_ID`: default `6`
+- `POLYESTER_OWNER_PRIVATE_KEY`: smart-account owner for UserOp submit (`16`/`17`)
 
 ## Notes For Bot Builders
 
 - Pass decimal strings for `qty` and `price`. Do not use floats for order inputs.
+- `GetCandles` is newest-first. Sort by `TsSec` ascending before feeding a
+  chronological indicator such as RSI.
 - Use client order IDs for idempotency and cleanup.
 - Check open orders before placing a new bot order.
 - Decide how your production bot will track positions. The RSI example intentionally avoids a
@@ -211,4 +266,6 @@ it remains open. Uses `cancel_all` in a `defer` for cleanup.
 
 ```bash
 go test ./...
+go build ./cmd/...
+make live-smoke
 ```
