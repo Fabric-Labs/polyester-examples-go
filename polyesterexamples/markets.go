@@ -348,7 +348,7 @@ func BuyQtyForQuoteCap(availableQuote, maxQuote, price float64, pair map[string]
 	step := StepSize(pair)
 	rawQty := quoteToUse / price
 	qty := alignToStep(rawQty, step, false)
-	minQty := minBaseQtyForNotional(pair, price)
+	minQty := MinBaseQtyForNotional(pair, price)
 	if qty < minQty {
 		qty = minQty
 	}
@@ -374,7 +374,9 @@ func SellQtyForQuoteCap(availableBase, maxQuote, price float64, pair map[string]
 	return FormatQty(qty, pair), nil
 }
 
-func minBaseQtyForNotional(pair map[string]any, price float64) float64 {
+// MinBaseQtyForNotional returns the smallest base qty that satisfies min qty and
+// min notional at the given price (aligned up to the pair step).
+func MinBaseQtyForNotional(pair map[string]any, price float64) float64 {
 	step := StepSize(pair)
 	minQty := MinQtyBase(pair)
 	minimum := MinNotionalQuote(pair)
