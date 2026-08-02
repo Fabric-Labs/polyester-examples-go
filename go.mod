@@ -2,7 +2,7 @@ module github.com/Fabric-Labs/polyester-examples-go
 
 go 1.25.0
 
-require github.com/Fabric-Labs/polyester-sdk-go v0.0.0-20260801151819-520068e6e8cb
+require github.com/Fabric-Labs/polyester-sdk-go v0.0.0-20260802144906-06a435196345
 
 replace github.com/Fabric-Labs/polyester-sdk-go => ../polyester-sdk-go
 
