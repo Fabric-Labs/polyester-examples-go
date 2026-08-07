@@ -132,7 +132,7 @@ Run examples from the repository root after configuring `.env`.
 | `01-public-market-data` | Optional | — | REST overview, trades, candles |
 | `02-balances-and-orders-read` | Required | — | Balances, open orders, history |
 | `19-preview-order` | Required | — | PreviewOrder admissibility + protected price bound |
-| `20-lifecycle-flows` | Required | — | Lifecycle reasons + Zipper rejection details |
+| `20-lifecycle-flows` | Required | `LIFECYCLE_TX_HASH` (optional) | Lifecycle reasons, Zipper details, paginated transaction matches |
 | `03-place-and-cancel-limit-order` | Required | `ENABLE_TRADING` | Post-only limit create, cancel, cleanup |
 | `04-public-realtime-trades` | Optional | — | Public trade websocket |
 | `05-public-orderbook-stream` | Optional | — | Snapshot + stream order book |
@@ -182,6 +182,10 @@ go run ./cmd/19-preview-order
 go run ./cmd/20-lifecycle-flows
 go run ./cmd/13-private-realtime
 ```
+
+Set `POLYESTER_EXAMPLES_LIFECYCLE_TX_HASH` before running example `20` to list
+every lifecycle flow associated with one transaction, following all pagination
+tokens.
 
 `13` subscribes to private orders and balances concurrently and prints up to
 `POLYESTER_EXAMPLES_STREAM_COUNT` events per stream (or 30s timeout). No trading flag.
