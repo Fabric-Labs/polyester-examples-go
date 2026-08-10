@@ -48,7 +48,7 @@ func main() {
 	}
 	symbol := polyesterexamples.PickSymbol(spot.Raw, settings.Symbol)
 
-	openOrders, err := client.Orders.ListOpen(ctx, nil, nil, nil, intPtr(20), false, false)
+	openOrders, err := client.Orders.ListOpen(ctx, nil, nil, nil, intPtr(20), false, false, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func main() {
 		)
 	}
 
-	history, err := client.Orders.ListHistory(ctx, nil, nil, &symbol, nil, nil, 10, false, false)
+	history, err := client.Orders.ListHistory(ctx, nil, nil, &symbol, nil, nil, 10, false, false, nil)
 	if err != nil {
 		log.Fatal(err)
 	}

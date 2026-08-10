@@ -73,7 +73,7 @@ func WaitForOpenOrder(
 				return order, nil
 			}
 		}
-		openOrders, err := client.Orders.ListOpen(ctx, nil, nil, nil, &limit, false, false)
+		openOrders, err := client.Orders.ListOpen(ctx, nil, nil, nil, &limit, false, false, nil)
 		if err == nil {
 			for _, openOrder := range openOrders.Orders {
 				if openOrder.ClientOrderID == clientOrderID {
@@ -113,7 +113,7 @@ func WaitForNoOpenOrder(
 	}
 	deadline := time.Now().Add(time.Duration(timeoutSec * float64(time.Second)))
 	for time.Now().Before(deadline) {
-		openOrders, err := client.Orders.ListOpen(ctx, nil, nil, nil, &limit, false, false)
+		openOrders, err := client.Orders.ListOpen(ctx, nil, nil, nil, &limit, false, false, nil)
 		if err == nil {
 			stillOpen := false
 			for _, order := range openOrders.Orders {
@@ -155,7 +155,7 @@ func OpenOrdersWithPrefix(ctx context.Context, client *polyester.Client, prefix 
 	if limit <= 0 {
 		limit = 100
 	}
-	openOrders, err := client.Orders.ListOpen(ctx, nil, nil, nil, &limit, false, false)
+	openOrders, err := client.Orders.ListOpen(ctx, nil, nil, nil, &limit, false, false, nil)
 	if err != nil {
 		return nil, err
 	}
