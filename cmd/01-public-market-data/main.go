@@ -31,7 +31,18 @@ func main() {
 	}
 	fmt.Println("Markets")
 	for _, market := range overview.Markets {
-		fmt.Printf("  %s: symbol_id=%d\n", market.Symbol, market.SymbolID)
+		last := "-"
+		index := "-"
+		if market.LastPrice.Ticks() > 0 {
+			last = market.LastPrice.Format()
+		}
+		if market.IndexPrice.Ticks() > 0 {
+			index = market.IndexPrice.Format()
+		}
+		fmt.Printf(
+			"  %s: symbol_id=%d last_price=%s index_price=%s\n",
+			market.Symbol, market.SymbolID, last, index,
+		)
 	}
 
 	spot, err := client.MarketData.GetSpotConfig(ctx)

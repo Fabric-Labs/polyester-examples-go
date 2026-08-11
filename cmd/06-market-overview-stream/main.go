@@ -60,14 +60,21 @@ func main() {
 			}
 			focus := rowForSymbol(rows, symbol)
 			label := symbol
-			price := "-"
+			last := "-"
+			index := "-"
 			if focus != nil {
 				label = focus.Symbol
 				if focus.LastPrice.Ticks() > 0 {
-					price = focus.LastPrice.Format()
+					last = focus.LastPrice.Format()
+				}
+				if focus.IndexPrice.Ticks() > 0 {
+					index = focus.IndexPrice.Format()
 				}
 			}
-			fmt.Printf("  update=%d rows=%d %s last_price=%s\n", seen+1, len(rows), label, price)
+			fmt.Printf(
+				"  update=%d rows=%d %s last_price=%s index_price=%s\n",
+				seen+1, len(rows), label, last, index,
+			)
 			seen++
 		case <-timeout:
 			fmt.Println("No overview updates within 30s. The market may be quiet on devnet.")
