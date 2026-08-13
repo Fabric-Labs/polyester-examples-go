@@ -133,6 +133,7 @@ Run examples from the repository root after configuring `.env`.
 | `02-balances-and-orders-read` | Required | — | Balances, open orders, history |
 | `19-preview-order` | Required | — | PreviewOrder admissibility + protected price bound |
 | `20-lifecycle-flows` | Required | `LIFECYCLE_TX_HASH` (optional) | Lifecycle reasons, Zipper details, paginated transaction matches |
+| `21-vip-fees-rate-limits` | Required | — | VIP catalog/status, effective spot fees, trading rate limits |
 | `03-place-and-cancel-limit-order` | Required | `ENABLE_TRADING` | Post-only limit create, cancel, cleanup |
 | `04-public-realtime-trades` | Optional | — | Public trade websocket |
 | `05-public-orderbook-stream` | Optional | — | Snapshot + stream order book |
@@ -180,6 +181,7 @@ Realtime examples exit after 30 seconds if no data arrives (common on quiet devn
 go run ./cmd/02-balances-and-orders-read
 go run ./cmd/19-preview-order
 go run ./cmd/20-lifecycle-flows
+go run ./cmd/21-vip-fees-rate-limits
 go run ./cmd/13-private-realtime
 ```
 

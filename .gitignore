@@ -50,3 +50,6 @@ go.work.sum
 /16-funding-to-trading
 /17-funding-to-external
 /18-trailing-stop-trigger
+/19-preview-order
+/20-lifecycle-flows
+/21-vip-fees-rate-limits
